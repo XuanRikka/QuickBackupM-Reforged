@@ -4,8 +4,6 @@ import io.github.skydynamic.quickbackupmulti.QuickbackupmultiReforged;
 import io.github.skydynamic.quickbackupmulti.neoforge.QuickbackupmultiReforgedNeoForge;
 import io.github.skydynamic.quickbackupmulti.event.OnServerStoppedHandler;
 import io.github.skydynamic.quickbackupmulti.neoforge.ServerManagerNeoforge;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -30,19 +28,12 @@ public class NeoForgeEvents {
         }
     }
 
-    @OnlyIn(Dist.DEDICATED_SERVER)
+    // Single handler for BOTH dists. This used to be two methods split by @OnlyIn,
+    // but NeoForge 26.x no longer strips @OnlyIn members at runtime — both would
+    // stay registered and the restore state machine would run twice per stop.
+    // The common handler is dist-agnostic anyway, matching the Fabric path.
     @SubscribeEvent
-    public static void onDedicatedServerStopped(ServerStoppedEvent event) {
-        // Route ALL modes through the common handler, matching Fabric: the old
-        // DEFAULT-mode special case called restoreBackup() bare — no schedule
-        // teardown, no temp backup (no rollback point), and the restore result
-        // was ignored before relaunching the server on a possibly broken save.
-        OnServerStoppedHandler.handle();
-    }
-
-    @OnlyIn(Dist.CLIENT)
-    @SubscribeEvent
-    public static void onIntegratedServerStopped(ServerStoppedEvent event) {
+    public static void onServerStopped(ServerStoppedEvent event) {
         OnServerStoppedHandler.handle();
     }
 }
