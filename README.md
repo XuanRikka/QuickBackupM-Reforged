@@ -32,6 +32,41 @@ _✨ MC备份 / 回档模组 ✨_
 > 
 > 本mod已支持\NeoForge/
 
+## 关于本 Fork (MC 26.2)
+
+> [!NOTE]
+> 本分支 (`26.2`) 是 [XuanRikka](https://github.com/XuanRikka) 维护的 fork, 将 mod 从 MC 1.21 迁移到 **MC 26.2**, 代码迁移与修复由 Anthropic 的 AI 模型 **Claude (Fable 5)** 在 Claude Code 中完成。
+
+### 主要更改
+
+**工具链迁移** (MC 26.1+ 不再混淆, Yarn/intermediary 停更):
+- 迁移到 `dev.architectury.loom-no-remap`, 移除 mappings 与 remapJar, shadowJar 为最终产物
+- Gradle 9.5 / Java 25 / Fabric Loader 0.19.3 / Fabric API 0.155.2+26.2 / NeoForge 26.2.0.32-beta
+- 适配 26.2 API: GuiGraphicsExtractor 渲染管线、sealed Click/HoverEvent、新权限系统、11 参 MinecraftServer 构造器、新 Mixin 注入点签名等
+
+**数据安全加固** (两轮多代理审查 + 对抗验证, 修复约 20 项问题):
+- 新增全局操作互斥锁, 备份与回档不再可能并发撕裂 blob 存储
+- 客户端回档失败自动回滚到临时备份; 回滚也失败时落盘 rescue 标记, 拒绝覆盖唯一幸存副本
+- 备份失败时正确恢复世界的 noSave 标志 (原实现会导致世界永久停止自动保存)
+- 全量备份移入 noSave 窗口内执行, 避免撕裂快照
+- Quartz 调度器改为共享单例, 停止单个任务不再杀死其他定时任务
+- 修复 NeoForge 26.x 移除 `@OnlyIn` 运行时剥离导致的服务器停止事件双重处理
+- 删除世界时的路径校验, 防止误删备份存储根目录
+
+**功能修复与新增**:
+- 恢复 `/qb back` 别名 (兼容 MCDR 时代肌肉记忆)
+- 支持中文等非 ASCII 备份名 (补全自动加引号)
+- `/qb search` 同时搜索备份描述
+- 修复 26.2 下回档界面文字不可见 (零 alpha 颜色被新文本管线跳过)
+
+**性能优化**:
+- H2 数据库常驻连接 (原实现每次查询完整开关数据库)
+- Tab 补全加短 TTL 缓存 (原实现每次按键全表扫描且在服务器主线程)
+- 回档文件重建并行化, 路径解析移出循环
+- `/qb search` 从 O(m×n) 降为单次遍历
+- 删除世界时的备份清理移出渲染线程
+- 全量备份触发时向玩家发送提示 (原先分钟级停顿无任何反馈, 易被误认为卡死)
+
 ## 本Mod优势
 - 支持回档自动重启服务器, 不再是只备份不回档
 - 客户端支持回档自动重进存档! 
