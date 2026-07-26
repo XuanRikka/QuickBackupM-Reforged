@@ -35,7 +35,7 @@ _✨ MC备份 / 回档模组 ✨_
 ## 关于本 Fork (MC 26.2)
 
 > [!NOTE]
-> 本分支 (`26.2`) 是 [XuanRikka](https://github.com/XuanRikka) 维护的 fork, 将 mod 从 MC 1.21 迁移到 **MC 26.2**, 代码迁移与修复由 Anthropic 的 AI 模型 **Claude (Fable 5)** 在 Claude Code 中完成。
+> 本分支 (`26.2`) 将 mod 从 MC 1.21 迁移到 **MC 26.2**。全部代码迁移、修复以及本 README 说明均由 Anthropic 的 AI 模型 **Claude (Fable 5)** 在 Claude Code 中完成。此 fork 按现状提供 (as-is), **不承诺后续维护**。
 
 ### 主要更改
 
