@@ -29,7 +29,12 @@ public class MixinWorldSelectionListWorldListEntry {
     )
     private void onDeleteWorld(CallbackInfo ci) {
         String worldName = this.summary.getLevelId();
-        BackupManager.deleteWorld(worldName);
+        // Recursively deleting a large backup store on the render thread freezes the
+        // UI for the whole deletion. The store belongs to the just-deleted world, so
+        // nothing else touches it — safe to do off-thread.
+        Thread deleteThread = new Thread(() -> BackupManager.deleteWorld(worldName), "QBM-DeleteWorldBackups");
+        deleteThread.setDaemon(false);
+        deleteThread.start();
     }
 
     @Inject(

@@ -2,8 +2,48 @@ package io.github.skydynamic.quickbackupmulti.schedule;
 
 import io.github.skydynamic.quickbackupmulti.QuickbackupmultiReforged;
 import io.github.skydynamic.quickbackupmulti.schedule.impl.ModSchedule;
+import org.quartz.Scheduler;
+import org.quartz.SchedulerException;
+import org.quartz.impl.StdSchedulerFactory;
+
+import java.util.Properties;
 
 public class ScheduleManager {
+    /**
+     * The single Quartz scheduler shared by every ModSchedule. Individual schedules
+     * must NEVER shut it down (the old per-schedule shutdown killed all sibling
+     * jobs — prune/database backups silently died after the first resetTimer);
+     * only {@link #clearAllSchedule()} tears it down, and it is lazily rebuilt on
+     * the next world load. Daemon threads so a forgotten scheduler can never hold
+     * the JVM open on exit.
+     */
+    private static Scheduler sharedScheduler;
+
+    public static synchronized Scheduler getSharedScheduler() throws SchedulerException {
+        if (sharedScheduler == null || sharedScheduler.isShutdown()) {
+            Properties props = new Properties();
+            props.setProperty("org.quartz.scheduler.instanceName", "QBM-Scheduler");
+            props.setProperty("org.quartz.scheduler.instanceId", "AUTO");
+            props.setProperty("org.quartz.threadPool.threadCount", "2");
+            props.setProperty("org.quartz.threadPool.makeThreadsDaemon", "true");
+            props.setProperty("org.quartz.scheduler.makeSchedulerThreadDaemon", "true");
+            props.setProperty("org.quartz.jobStore.class", "org.quartz.simpl.RAMJobStore");
+            sharedScheduler = new StdSchedulerFactory(props).getScheduler();
+            sharedScheduler.start();
+        }
+        return sharedScheduler;
+    }
+
+    private static synchronized void shutdownSharedScheduler() {
+        if (sharedScheduler != null) {
+            try {
+                sharedScheduler.shutdown(true);
+            } catch (SchedulerException e) {
+                QuickbackupmultiReforged.logger.error("Failed to shutdown scheduler", e);
+            }
+            sharedScheduler = null;
+        }
+    }
     private static void registerSchedule(ModSchedule schedule) {
         if (QuickbackupmultiReforged.getModContainer().getSchedules().contains(schedule)) {
             QuickbackupmultiReforged.logger.warn("Schedule already exists: {}", schedule.getName());
@@ -47,6 +87,7 @@ public class ScheduleManager {
 
     public static void clearAllSchedule() {
         stopAllSchedule();
+        shutdownSharedScheduler();
         QuickbackupmultiReforged.getModContainer().getSchedules().clear();
     }
 

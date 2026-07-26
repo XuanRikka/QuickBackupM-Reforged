@@ -1,5 +1,5 @@
 plugins {
-    id "com.github.johnrengelman.shadow"
+    id "com.gradleup.shadow"
 }
 
 architectury {
@@ -35,7 +35,7 @@ repositories {
 dependencies {
     neoForge "net.neoforged:neoforge:$rootProject.neoforge_version"
 
-    common(project(path: ":${mod_id}-common", configuration: "namedElements")) { transitive false }
+    common(project(path: ":${mod_id}-common")) { transitive false }
     shadowBundle project(path: ":${mod_id}-common", configuration: "transformProductionNeoForge")
 
     forgeRuntimeLibrary("org.quartz-scheduler:quartz:2.5.0")
@@ -66,11 +66,15 @@ processResources {
     }
 }
 
-shadowJar {
-    configurations = [project.configurations.shadowBundle]
-    archiveClassifier = "dev-shadow"
+// With loom-no-remap there is no remapJar: shadowJar itself becomes the final artifact.
+jar {
+    archiveClassifier = "raw"
 }
 
-remapJar {
-    input.set shadowJar.archiveFile
+shadowJar {
+    dependsOn(jar)
+    mainSpec.sourcePaths.clear()
+    from(zipTree(jar.archiveFile))
+    configurations = [project.configurations.shadowBundle]
+    archiveClassifier = null
 }

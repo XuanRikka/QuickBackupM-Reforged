@@ -7,6 +7,7 @@ import io.github.skydynamic.quickbackupmulti.config.ModConfig;
 import io.github.skydynamic.quickbackupmulti.database.DatabaseManager;
 import io.github.skydynamic.quickbackupmulti.schedule.quartz.DisableQuartzInfoLogger;
 import io.github.skydynamic.quickbackupmulti.translate.Translate;
+import io.github.skydynamic.quickbackupmulti.utils.BackupManager;
 import io.github.skydynamic.quickbackupmulti.utils.UpdateChecker;
 import io.github.skydynamic.quickbackupmulti.utils.permission.PermissionManager;
 import lombok.Getter;
@@ -84,5 +85,7 @@ public final class QuickbackupmultiReforged {
         modTempConfig.setStoragePath(QuickbackupmultiReforged.getModConfig().getStoragePath() + appendFolder);
         QuickbackupmultiReforged.setDatabase(new Database(databaseManager));
         QuickbackupmultiReforged.setManager(new StorageManager(QuickbackupmultiReforged.getDatabase(), modTempConfig));
+        // The cache would otherwise briefly serve the previous world's backups.
+        BackupManager.invalidateSuggestionCache();
     }
 }

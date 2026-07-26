@@ -26,7 +26,7 @@ public class ModContainer {
     private PermissionManager permissionManager;
     private Path currentSavePath;
 
-    private boolean isRestoringBackup;
+    private volatile boolean isRestoringBackup;
     private boolean isAfterRestarting;
     private String currentSelectionBackup;
 

@@ -4,8 +4,8 @@ import io.github.skydynamic.quickbackupmulti.QuickbackupmultiReforged;
 import io.github.skydynamic.quickbackupmulti.schedule.CronUtils;
 import io.github.skydynamic.quickbackupmulti.schedule.IModSchedule;
 import io.github.skydynamic.quickbackupmulti.schedule.ModJob;
+import io.github.skydynamic.quickbackupmulti.schedule.ScheduleManager;
 import org.quartz.*;
-import org.quartz.impl.StdSchedulerFactory;
 
 import static io.github.skydynamic.quickbackupmulti.schedule.CronUtils.buildTrigger;
 
@@ -41,30 +41,30 @@ public class ModSchedule implements IModSchedule {
         return identity;
     }
 
+    private Trigger rebuildTrigger() {
+        if (crontab != null && !crontab.isEmpty()) {
+            return buildTrigger(identity, CronUtils.ScheduleMode.CRONTAB, crontab);
+        } else if (interval != null && interval > 0) {
+            return buildTrigger(identity, CronUtils.ScheduleMode.INTERVAL, interval);
+        }
+        return null;
+    }
+
     @Override
     public boolean startSchedule() {
         jobDetail = JobBuilder
             .newJob(ModJob.class)
             .withIdentity(identity)
             .build();
-        StdSchedulerFactory sf = new StdSchedulerFactory();
 
-        if (crontab != null && !crontab.isEmpty()) {
-            trigger = buildTrigger(identity, CronUtils.ScheduleMode.CRONTAB, crontab);
-        } else if (interval != null && interval > 0) {
-            trigger = buildTrigger(identity, CronUtils.ScheduleMode.INTERVAL, interval);
-        } else {
-            return false;
-        }
-
+        trigger = rebuildTrigger();
         if (trigger == null) {
             return false;
         }
 
         try {
-            scheduler = sf.getScheduler();
+            scheduler = ScheduleManager.getSharedScheduler();
             scheduler.scheduleJob(jobDetail, trigger);
-            scheduler.start();
             return true;
         } catch (SchedulerException e) {
             QuickbackupmultiReforged.logger.error("Failed to get scheduler", e);
@@ -74,10 +74,15 @@ public class ModSchedule implements IModSchedule {
 
     @Override
     public void stopSchedule() {
+        // Remove ONLY this schedule's job from the shared scheduler. Shutting the
+        // scheduler down here (the old behavior) killed every sibling schedule —
+        // prune/database backups silently died after the first stop/reset.
         try {
-            scheduler.shutdown(true);
+            if (scheduler != null && !scheduler.isShutdown()) {
+                scheduler.deleteJob(JobKey.jobKey(identity));
+            }
         } catch (SchedulerException e) {
-            QuickbackupmultiReforged.logger.error("Failed to stop scheduler", e);
+            QuickbackupmultiReforged.logger.error("Failed to stop schedule {}", identity, e);
         }
     }
 
@@ -90,7 +95,7 @@ public class ModSchedule implements IModSchedule {
     @Override
     public boolean isRunning() {
         try {
-            return scheduler.isStarted();
+            return scheduler != null && !scheduler.isShutdown() && scheduler.checkExists(JobKey.jobKey(identity));
         } catch (SchedulerException e) {
             return false;
         }
@@ -103,11 +108,24 @@ public class ModSchedule implements IModSchedule {
 
     @Override
     public boolean resetTimer() {
-        if (scheduler != null) {
-            stopSchedule();
-            return startSchedule();
+        if (scheduler == null) {
+            return false;
         }
-        return false;
+        Trigger newTrigger = rebuildTrigger();
+        if (newTrigger == null) {
+            return false;
+        }
+        try {
+            // Atomic in-place reschedule of this trigger only; sibling jobs untouched.
+            if (scheduler.rescheduleJob(TriggerKey.triggerKey(identity), newTrigger) == null) {
+                return false;
+            }
+            trigger = newTrigger;
+            return true;
+        } catch (SchedulerException e) {
+            QuickbackupmultiReforged.logger.error("Failed to reset schedule {}", identity, e);
+            return false;
+        }
     }
 
     public void execute() {

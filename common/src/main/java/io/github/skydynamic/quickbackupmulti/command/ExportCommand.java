@@ -23,7 +23,7 @@ public class ExportCommand {
         .requires(it -> PermissionManager.hasPermission(it, 2, PermissionType.HELPER))
         .then(Commands.argument("name", StringArgumentType.string())
             .suggests(((context, builder) -> {
-                for (StorageInfo info : BackupManager.getBackupsList()) {
+                for (StorageInfo info : BackupManager.getSuggestionBackups()) {
                     if (info.getName().contains(builder.getRemaining())) {
                         builder.suggest(info.getName());
                     }

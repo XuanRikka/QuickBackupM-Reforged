@@ -29,29 +29,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static io.github.skydynamic.quickbackupmulti.translate.Translate.tr;
 
 public class RestoreCommand {
-    public static final LiteralArgumentBuilder<CommandSourceStack> restoreCmd = Commands.literal("restore")
-        .requires(it -> PermissionManager.hasPermission(it, 4, PermissionType.ADMIN))
-        .then(Commands.argument("target", StringArgumentType.string())
-            .suggests(((context, builder) -> {
-                List<StorageInfo> backups = BackupManager.getSortedBackups();
-                String remaining = builder.getRemaining();
-                int index = 1;
-                for (StorageInfo info : backups) {
-                    String name = info.getName();
-                    if (name.contains(remaining)) {
-                        builder.suggest(name);
+    private static LiteralArgumentBuilder<CommandSourceStack> buildRestoreCmd(String literal) {
+        return Commands.literal(literal)
+            .requires(it -> PermissionManager.hasPermission(it, 4, PermissionType.ADMIN))
+            .then(Commands.argument("target", StringArgumentType.string())
+                .suggests(((context, builder) -> {
+                    List<StorageInfo> backups = BackupManager.getSuggestionBackups();
+                    String remaining = builder.getRemaining();
+                    int index = 1;
+                    for (StorageInfo info : backups) {
+                        String name = info.getName();
+                        if (name.contains(remaining)) {
+                            // Names with non-ASCII chars (e.g. Chinese) must be quoted for
+                            // brigadier's string() type, so suggest them pre-escaped.
+                            builder.suggest(StringArgumentType.escapeIfRequired(name));
+                        }
+                        String idx = String.valueOf(index++);
+                        if (idx.startsWith(remaining)) {
+                            builder.suggest(idx);
+                        }
                     }
-                    String idx = String.valueOf(index++);
-                    if (idx.startsWith(remaining)) {
-                        builder.suggest(idx);
-                    }
-                }
-                return builder.buildFuture();
-            }))
-            .executes(it ->
-                restoreBackup(it.getSource(), StringArgumentType.getString(it, "target"))
-            )
-        );
+                    return builder.buildFuture();
+                }))
+                .executes(it ->
+                    restoreBackup(it.getSource(), StringArgumentType.getString(it, "target"))
+                )
+            );
+    }
+
+    public static final LiteralArgumentBuilder<CommandSourceStack> restoreCmd = buildRestoreCmd("restore");
+
+    // Alias kept for muscle memory from QBM v2 / the original MCDR plugin (`!!qb back`).
+    public static final LiteralArgumentBuilder<CommandSourceStack> backCmd = buildRestoreCmd("back");
 
     public static final LiteralArgumentBuilder<CommandSourceStack> confirmCmd = Commands.literal("confirm")
         .requires(it -> PermissionManager.hasPermission(it, 4, PermissionType.ADMIN))
@@ -77,11 +86,29 @@ public class RestoreCommand {
             commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.fail")));
             return 0;
         }
+        // After a restore whose rollback ALSO failed, 'restore_temp' is the only
+        // surviving pre-restore copy. A normal restore would overwrite it via
+        // makeTempBackup — refuse everything except recovering restore_temp itself.
+        if (!"restore_temp".equals(name) && BackupManager.isRescuePending()) {
+            commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.rescue_pending")));
+            return 0;
+        }
         ConcurrentHashMap<String, Object> restoreMap = new ConcurrentHashMap<>();
         restoreMap.put("Slot", name);
         restoreMap.put("Timer", new Timer());
         restoreMap.put("Countdown", Executors.newSingleThreadScheduledExecutor());
         synchronized (restoreDataMap) {
+            ConcurrentHashMap<String, Object> existing = restoreDataMap.get("QBM");
+            if (existing != null) {
+                if (existing.containsKey("Confirmed")) {
+                    // A countdown is already armed: replacing the entry here would orphan
+                    // its Timer where /qb cancel can no longer reach it.
+                    commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.already_in_progress")));
+                    return 0;
+                }
+                ((Timer) existing.get("Timer")).cancel();
+                ((ScheduledExecutorService) existing.get("Countdown")).shutdownNow();
+            }
             restoreDataMap.put("QBM", restoreMap);
             commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.confirm_hint")));
         }
@@ -90,15 +117,22 @@ public class RestoreCommand {
 
     private static void executeRestore(CommandSourceStack commandSource) {
         synchronized (restoreDataMap) {
-            if (restoreDataMap.containsKey("QBM")) {
-                if (!QuickbackupmultiReforged.getDatabase().storageExists(restoreDataMap.get("QBM").get("Slot").toString())) {
+            ConcurrentHashMap<String, Object> restoreMap = restoreDataMap.get("QBM");
+            if (restoreMap != null) {
+                if (restoreMap.containsKey("Confirmed")) {
+                    // A second /qb confirm inside the countdown window would arm a SECOND
+                    // RestoreTimer — double server halt / double world delete.
+                    commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.already_in_progress")));
+                    return;
+                }
+                if (!QuickbackupmultiReforged.getDatabase().storageExists(restoreMap.get("Slot").toString())) {
                     commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.fail")));
                     restoreDataMap.clear();
                     return;
                 }
                 String executePlayerName;
                 if (commandSource.getPlayer() != null) {
-                    executePlayerName = commandSource.getPlayer().getGameProfile().getName();
+                    executePlayerName = commandSource.getPlayer().getName().getString();
                 } else {
                     executePlayerName = "Console";
                 }
@@ -108,17 +142,18 @@ public class RestoreCommand {
                 for (ServerPlayer player : players) {
                     player.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.countdown.intro", executePlayerName)));
                 }
-                String slot = (String) restoreDataMap.get("QBM").get("Slot");
+                String slot = (String) restoreMap.get("Slot");
                 QuickbackupmultiReforged.getModContainer().setCurrentSelectionBackup(slot);
-                Timer timer = (Timer) restoreDataMap.get("QBM").get("Timer");
-                ScheduledExecutorService countdown = (ScheduledExecutorService) restoreDataMap.get("QBM").get("Countdown");
+                Timer timer = (Timer) restoreMap.get("Timer");
+                ScheduledExecutorService countdown = (ScheduledExecutorService) restoreMap.get("Countdown");
+                restoreMap.put("Confirmed", Boolean.TRUE);
                 AtomicInteger countDown = new AtomicInteger(11);
                 countdown.scheduleAtFixedRate(() -> {
                     int remaining = countDown.decrementAndGet();
                     if (remaining >= 1) {
                         MutableComponent content = Component.literal(tr("quickbackupmulti.restore.countdown.text", remaining, slot))
                             .append(Component.literal(tr("quickbackupmulti.restore.countdown.hover"))
-                                .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/qb cancel"))));
+                                .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand("/qb cancel"))));
                         for (ServerPlayer player : players) {
                             player.sendSystemMessage(content, false);
                         }
@@ -135,18 +170,19 @@ public class RestoreCommand {
     }
 
     private static int cancelRestore(CommandSourceStack commandSource) {
-        if (restoreDataMap.containsKey("QBM")) {
-            synchronized (restoreDataMap) {
-                Timer timer = (Timer) restoreDataMap.get("QBM").get("Timer");
-                ScheduledExecutorService countdown = (ScheduledExecutorService) restoreDataMap.get("QBM").get("Countdown");
+        synchronized (restoreDataMap) {
+            ConcurrentHashMap<String, Object> restoreMap = restoreDataMap.get("QBM");
+            if (restoreMap != null) {
+                Timer timer = (Timer) restoreMap.get("Timer");
+                ScheduledExecutorService countdown = (ScheduledExecutorService) restoreMap.get("Countdown");
                 timer.cancel();
                 countdown.shutdown();
                 restoreDataMap.clear();
                 QuickbackupmultiReforged.getModContainer().setRestoringBackup(false);
                 commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.restore.abort")));
+            } else {
+                commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.confirm_restore.nothing_to_confirm")));
             }
-        } else {
-            commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.confirm_restore.nothing_to_confirm")));
         }
         return 1;
     }

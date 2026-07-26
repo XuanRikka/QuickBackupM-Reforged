@@ -45,6 +45,7 @@ public class ModCommand {
             .then(ExportCommand.cmd)
             .then(PermissionCommand.cmd)
             .then(RestoreCommand.restoreCmd)
+            .then(RestoreCommand.backCmd)
             .then(RestoreCommand.confirmCmd)
             .then(RestoreCommand.cancelCmd)
             .then(SettingCommand.cmd)

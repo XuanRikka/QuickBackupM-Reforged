@@ -1,8 +1,10 @@
 apply plugin: "java"
 apply plugin: "application"
-apply plugin: "com.github.johnrengelman.shadow"
+apply plugin: "com.gradleup.shadow"
 
-archivesBaseName = project.archives_name + "-cli"
+base {
+    archivesName = project.archives_name + "-cli"
+}
 
 application {
     mainClass = "io.github.skydynamic.quickbackupmulti.cli.QbmCli"
@@ -55,5 +57,10 @@ shadowJar {
 
 distZip.enabled = false
 distTar.enabled = false
+
+// Gradle 9 strict validation: the start-script tasks scan the libs dir where both
+// jar and shadowJar write, so declare the ordering explicitly.
+startScripts.dependsOn(shadowJar)
+tasks.named("startShadowScripts") { dependsOn(tasks.named("jar")) }
 
 build.dependsOn(shadowJar)

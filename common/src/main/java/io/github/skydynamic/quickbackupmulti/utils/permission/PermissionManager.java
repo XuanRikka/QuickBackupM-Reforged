@@ -7,6 +7,10 @@ import io.github.skydynamic.quickbackupmulti.QuickbackupmultiReforged;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.permissions.Permission;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.server.permissions.Permissions;
+import net.minecraft.server.players.NameAndId;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
@@ -95,7 +99,7 @@ public class PermissionManager {
             if (checkLocalGamePermission(source)) {
                 return true;
             } else {
-                return source.hasPermission(mcPermission)
+                return source.permissions().hasPermission(new Permission.HasCommandLevel(PermissionLevel.byId(mcPermission)))
                     || QuickbackupmultiReforged.getModContainer()
                     .getPermissionManager()
                     .getPlayerPermissionLevel(player.getName().getString()) >= modPermission.level;
@@ -113,11 +117,11 @@ public class PermissionManager {
     }
 
     private static boolean getPermission(CommandSourceStack source) throws CommandSyntaxException {
-        boolean flag = source.hasPermission(4);
+        boolean flag = source.permissions().hasPermission(Permissions.COMMANDS_OWNER);
         ServerPlayer player;
         MinecraftServer server;
         if (!flag && (server = source.getServer()).isSingleplayer() && (player = source.getPlayer()) != null && source.isPlayer()) {
-            flag = server.isSingleplayerOwner(player.getGameProfile());
+            flag = server.isSingleplayerOwner(new NameAndId(player.getGameProfile()));
         }
         return flag;
     }

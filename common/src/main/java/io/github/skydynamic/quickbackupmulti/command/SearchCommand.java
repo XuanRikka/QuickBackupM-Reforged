@@ -6,12 +6,13 @@ import io.github.skydynamic.increment.storage.lib.database.StorageInfo;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import io.github.skydynamic.quickbackupmulti.utils.BackupManager;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static io.github.skydynamic.quickbackupmulti.translate.Translate.tr;
-import static io.github.skydynamic.quickbackupmulti.utils.BackupManager.getBackupsList;
 import static io.github.skydynamic.quickbackupmulti.utils.ListBackupsUtils.search;
 
 public class SearchCommand {
@@ -23,14 +24,21 @@ public class SearchCommand {
         );
 
     private static int searchSaveBackups(CommandSourceStack commandSource, String string) {
-        List<String> backupsList = getBackupsList().stream().map(StorageInfo::getName).toList();
-        List<String> result = backupsList.stream()
-            .filter(it -> StringUtils.containsIgnoreCase(it, string))
-            .toList();
-        if (result.isEmpty()) {
+        // One sorted fetch serves both matching and index numbering — the previous
+        // shape re-queried the DB and rescanned the whole list per hit (O(m×n)).
+        List<StorageInfo> backups = BackupManager.getSortedBackups();
+        List<Integer> matchedIndices = new ArrayList<>();
+        for (int i = 0; i < backups.size(); i++) {
+            StorageInfo info = backups.get(i);
+            if (StringUtils.containsIgnoreCase(info.getName(), string)
+                || StringUtils.containsIgnoreCase(info.getDesc(), string)) {
+                matchedIndices.add(i + 1);
+            }
+        }
+        if (matchedIndices.isEmpty()) {
             commandSource.sendSystemMessage(Component.nullToEmpty(tr("quickbackupmulti.search.fail")));
         } else {
-            commandSource.sendSystemMessage(search(result));
+            commandSource.sendSystemMessage(search(backups, matchedIndices));
         }
         return 1;
     }

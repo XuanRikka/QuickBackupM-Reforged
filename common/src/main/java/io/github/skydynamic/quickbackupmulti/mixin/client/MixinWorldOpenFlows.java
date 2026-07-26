@@ -7,14 +7,17 @@ import net.minecraft.client.gui.screens.worldselection.WorldOpenFlows;
 import net.minecraft.core.LayeredRegistryAccess;
 import net.minecraft.server.RegistryLayer;
 import net.minecraft.server.ReloadableServerResources;
+import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.storage.LevelDataAndDimensions;
 import net.minecraft.world.level.storage.LevelStorageSource;
-import net.minecraft.world.level.storage.WorldData;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.Optional;
 
 @Mixin(WorldOpenFlows.class)
 public class MixinWorldOpenFlows {
@@ -31,7 +34,8 @@ public class MixinWorldOpenFlows {
     )
     private void onCreateLevelFromExistingSettings$createPackRepository(
         LevelStorageSource.LevelStorageAccess levelStorageAccess, ReloadableServerResources reloadableServerResources,
-        LayeredRegistryAccess<RegistryLayer> layeredRegistryAccess, WorldData worldData,
+        LayeredRegistryAccess<RegistryLayer> layeredRegistryAccess,
+        LevelDataAndDimensions.WorldDataAndGenSettings worldDataAndGenSettings, Optional<GameRules> gameRules,
         CallbackInfo ci
     ) {
         String worldName = levelStorageAccess.getLevelId();

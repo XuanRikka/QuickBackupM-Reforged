@@ -1,7 +1,7 @@
 plugins {
-    id "dev.architectury.loom" version "1.9-SNAPSHOT" apply false
-    id "architectury-plugin" version "3.4-SNAPSHOT"
-    id "com.github.johnrengelman.shadow" version "8.1.1" apply false
+    id "dev.architectury.loom-no-remap" version "1.17-SNAPSHOT" apply false
+    id "architectury-plugin" version "3.5-SNAPSHOT"
+    id "com.gradleup.shadow" version "9.6.1" apply false
 
     id "maven-publish"
 }
@@ -74,7 +74,7 @@ subprojects {
         return
     }
 
-    apply plugin: "dev.architectury.loom"
+    apply plugin: "dev.architectury.loom-no-remap"
     apply plugin: "architectury-plugin"
     apply plugin: "maven-publish"
 
@@ -87,8 +87,8 @@ subprojects {
     }
 
     dependencies {
-        minecraft "net.minecraft:minecraft:$rootProject.minecraft_version"
-        mappings loom.officialMojangMappings()
+        // MC 26.1+ is unobfuscated: no mappings, new com.mojang coordinates (loom-no-remap).
+        minecraft "com.mojang:minecraft:$rootProject.minecraft_version"
 
         // incremental storage
         implementation("io.github.skydynamic:incremental-storage-lib:$rootProject.incremental_storage_lib_version")
@@ -100,8 +100,8 @@ subprojects {
         implementation("org.quartz-scheduler:quartz:2.5.0")
 
         // lombok
-        compileOnly("org.projectlombok:lombok:1.18.30")
-        annotationProcessor("org.projectlombok:lombok:1.18.30")
+        compileOnly("org.projectlombok:lombok:1.18.46")
+        annotationProcessor("org.projectlombok:lombok:1.18.46")
     }
 
     String versionSuffix = project.getVersionSuffix()
@@ -110,7 +110,9 @@ subprojects {
 
     version = fullModVersion
     group = project.maven_group
-    archivesBaseName = project.archives_name + "-mc" + project.minecraft_version + "-$project.name".replace("${mod_id}-", "")
+    base {
+        archivesName = project.archives_name + "-mc" + project.minecraft_version + "-$project.name".replace("${mod_id}-", "")
+    }
 
     // Access widener: merge common + platform before compiling (loom-agnostic).
     apply from: rootProject.file("gradle/accesswidener.gradle")
@@ -118,29 +120,18 @@ subprojects {
     java {
         withSourcesJar()
 
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
     }
 
     tasks.withType(JavaCompile).configureEach {
-        it.options.release = 21
+        it.options.release = 25
+        it.options.compilerArgs << "-Xmaxerrs" << "2000"
     }
 
-    beforeEvaluate {
-        tasks.register('cleanBuildLibs') {
-            doFirst {
-                def libsDir = project.projectDir.toPath().resolve("build/libs").toFile()
-                if (libsDir.exists()) {
-                    libsDir.listFiles().each { file ->
-                        file.delete()
-                    }
-                }
-            }
-        }
-
-        tasks.build.dependsOn(cleanBuildLibs)
-        tasks.remapJar.dependsOn(cleanBuildLibs)
-    }
+    // NOTE: the old `cleanBuildLibs` hack (wipe build/libs before building) was removed.
+    // It relied on remapJar ordering, which no longer exists with loom-no-remap, and
+    // under Gradle 9 it raced against up-to-date jar tasks, deleting their outputs mid-build.
 
     afterEvaluate {
         def targetLibsDir = rootProject.file("build/libs")
@@ -157,7 +148,8 @@ subprojects {
                         sourceLibsDir.listFiles().each { file ->
                             if (file.name.endsWith('.jar')
                                     && !file.name.contains('dev')
-                                    && !file.name.contains('source')) {
+                                    && !file.name.contains('source')
+                                    && !file.name.contains('raw')) {
                                 ant.copy(file: file, todir: targetLibsDir)
                             }
                         }
@@ -167,6 +159,6 @@ subprojects {
         }
 
         tasks.build.finalizedBy(copyJarsToRootLibs)
-        tasks.remapJar.finalizedBy(copyJarsToRootLibs)
+        tasks.matching { it.name == "shadowJar" }.configureEach { finalizedBy(copyJarsToRootLibs) }
     }
 }

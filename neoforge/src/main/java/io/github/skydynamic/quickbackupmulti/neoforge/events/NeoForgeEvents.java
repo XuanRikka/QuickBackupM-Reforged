@@ -1,11 +1,9 @@
 package io.github.skydynamic.quickbackupmulti.neoforge.events;
 
 import io.github.skydynamic.quickbackupmulti.QuickbackupmultiReforged;
-import io.github.skydynamic.quickbackupmulti.config.ModConfig;
 import io.github.skydynamic.quickbackupmulti.neoforge.QuickbackupmultiReforgedNeoForge;
 import io.github.skydynamic.quickbackupmulti.event.OnServerStoppedHandler;
 import io.github.skydynamic.quickbackupmulti.neoforge.ServerManagerNeoforge;
-import io.github.skydynamic.quickbackupmulti.utils.BackupManager;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -35,14 +33,11 @@ public class NeoForgeEvents {
     @OnlyIn(Dist.DEDICATED_SERVER)
     @SubscribeEvent
     public static void onDedicatedServerStopped(ServerStoppedEvent event) {
-        if (QuickbackupmultiReforged.getModContainer().isRestoringBackup()) {
-            if (QuickbackupmultiReforged.getModConfig().getAutoRestartMode() == ModConfig.AutoRestartMode.DEFAULT) {
-                BackupManager.restoreBackup(QuickbackupmultiReforged.getModContainer().getCurrentSelectionBackup());
-                QuickbackupmultiReforged.getServerManager().startServer();
-            } else {
-                OnServerStoppedHandler.handle();
-            }
-        }
+        // Route ALL modes through the common handler, matching Fabric: the old
+        // DEFAULT-mode special case called restoreBackup() bare — no schedule
+        // teardown, no temp backup (no rollback point), and the restore result
+        // was ignored before relaunching the server on a possibly broken save.
+        OnServerStoppedHandler.handle();
     }
 
     @OnlyIn(Dist.CLIENT)

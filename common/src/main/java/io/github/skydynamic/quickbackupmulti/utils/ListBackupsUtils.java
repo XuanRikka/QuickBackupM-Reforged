@@ -46,9 +46,9 @@ public class ListBackupsUtils {
 
     private static MutableComponent getPageNavigationText(String direction, int page, int totalPage, int offset) {
         MutableComponent text = Component.literal(direction);
-        text.withStyle(style -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.nullToEmpty(direction))));
+        text.withStyle(style -> style.withHoverEvent(new HoverEvent.ShowText(Component.nullToEmpty(direction))));
         if (page != offset && totalPage > 1) {
-            text.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/qb list " + (page + offset))))
+            text.withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand("/qb list " + (page + offset))))
                 .withStyle(style -> style.withColor(ChatFormatting.AQUA));
         } else {
             text.withStyle(style -> style.withColor(ChatFormatting.DARK_GRAY));
@@ -73,17 +73,17 @@ public class ListBackupsUtils {
             .withStyle(style -> style.withColor(ChatFormatting.GRAY));
         MutableComponent resultText = Component.literal("");
 
-        backText.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/qb restore " + globalIndex)))
+        backText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand("/qb restore " + globalIndex)))
             .withStyle(style -> style.withHoverEvent(
-                new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.restore", name)))));
+                new HoverEvent.ShowText(Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.restore", name)))));
 
-        deleteText.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/qb delete \"%s\"".formatted(name))))
+        deleteText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand("/qb delete \"%s\"".formatted(name))))
             .withStyle(style -> style.withHoverEvent(
-                new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.literal(tr("quickbackupmulti.list_backup.slot.delete", name)))));
+                new HoverEvent.ShowText(Component.literal(tr("quickbackupmulti.list_backup.slot.delete", name)))));
 
-        nameText.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/qb show \"%s\"".formatted(name))))
+        nameText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand("/qb show \"%s\"".formatted(name))))
             .withStyle(style -> style.withHoverEvent(
-                new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.show", name)))));
+                new HoverEvent.ShowText(Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.show", name)))));
 
         String desc = info.getDesc();
         if (desc.isEmpty()) desc = "Empty";
@@ -134,17 +134,18 @@ public class ListBackupsUtils {
         return resultText;
     }
 
-    public static MutableComponent search(List<String> searchResultList) {
+    /**
+     * Render search hits. {@code matchedIndices} are 1-based positions into the
+     * time-sorted backup list — the same numbering /qb list and /qb restore use.
+     * Taking the already-fetched list avoids the old per-hit DB query plus per-hit
+     * full-list rescan (O(m×n) with m queries).
+     */
+    public static MutableComponent search(List<StorageInfo> sortedBackups, List<Integer> matchedIndices) {
         MutableComponent resultText = Component.literal(tr("quickbackupmulti.search.success"));
-        for (int i = 1; i <= searchResultList.size(); i++) {
+        int num = 1;
+        for (int globalIndex : matchedIndices) {
             try {
-                String name = searchResultList.get(i - 1);
-                StorageInfo result = QuickbackupmultiReforged.getDatabase().getStorageInfoWithName(name);
-                int globalIndex = BackupManager.getBackupIndex(name);
-                if (globalIndex <= 0) {
-                    globalIndex = i;
-                }
-                resultText.append(getSlotText(result, 1, i, globalIndex));
+                resultText.append(getSlotText(sortedBackups.get(globalIndex - 1), 1, num++, globalIndex));
             } catch (IOException e) {
                 logger.error("Error while searching backups", e);
                 return Component.literal("Error while searching backups").withStyle(ChatFormatting.RED);
@@ -163,12 +164,12 @@ public class ListBackupsUtils {
 
             MutableComponent backText = Component.literal(tr("quickbackupmulti.show.back_button"));
             MutableComponent deleteText = Component.literal(tr("quickbackupmulti.show.delete_button"));
-            backText.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/qb restore \"%s\"".formatted(name))))
+            backText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand("/qb restore \"%s\"".formatted(name))))
                 .withStyle(style -> style.withHoverEvent(
-                    new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.restore", name)))));
-            deleteText.withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/qb delete \"%s\"".formatted(name))))
+                    new HoverEvent.ShowText(Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.restore", name)))));
+            deleteText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand("/qb delete \"%s\"".formatted(name))))
                 .withStyle(style -> style.withHoverEvent(
-                    new HoverEvent(HoverEvent.Action.SHOW_TEXT, Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.delete", name)))));
+                    new HoverEvent.ShowText(Component.nullToEmpty(tr("quickbackupmulti.list_backup.slot.delete", name)))));
 
             resultText.append("\n")
                 .append(tr("quickbackupmulti.show.name") + ": §r" + backupInfo.getName() + "\n")

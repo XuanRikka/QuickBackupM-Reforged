@@ -19,9 +19,9 @@ public final class QuickbackupmultiReforgedNeoForge {
 
     public QuickbackupmultiReforgedNeoForge() {
         modContainer.setConfigPath(FMLPaths.CONFIGDIR.get());
-        modContainer.setEnvType(FMLLoader.getDist().isClient() ? ModEnvType.CLIENT : ModEnvType.SERVER);
+        modContainer.setEnvType(FMLLoader.getCurrent().getDist().isClient() ? ModEnvType.CLIENT : ModEnvType.SERVER);
 
-        String version = FMLLoader.getLoadingModList().getModFileById(QuickbackupmultiReforged.MOD_ID).getMods().getFirst().getVersion().toString();
+        String version = FMLLoader.getCurrent().getLoadingModList().getModFileById(QuickbackupmultiReforged.MOD_ID).getMods().getFirst().getVersion().toString();
         modContainer.setModVersion(new ModVersion(version));
 
         QuickbackupmultiReforged.init(modContainer);
