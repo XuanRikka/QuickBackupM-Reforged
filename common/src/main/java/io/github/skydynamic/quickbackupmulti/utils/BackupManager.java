@@ -329,6 +329,15 @@ public class BackupManager {
         Path tempBlobsDir = backupPath.resolve("blogs_temp");
         int total = hashMap.size();
         java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+        logger.info("[QBM-DBG] reconstructBackup name='{}' targetRoot='{}' totalFiles={} backupPath='{}'", name, targetRoot, total, backupPath);
+        logger.info("[QBM-DBG] reconstructBackup databasePath(exposed)='{}' managerStoragePath='{}' levelId='{}'",
+            QuickbackupmultiReforged.getDatabase() != null ? "<db-ok>" : "<db-null>",
+            QuickbackupmultiReforged.getModConfig().getStoragePath(),
+            QuickbackupmultiReforged.getModContainer().getLevelId());
+        // If the hash map is empty the restore would silently produce an empty world.
+        if (total == 0) {
+            logger.warn("[QBM-DBG] reconstructBackup name='{}' got EMPTY file hash map — restore will produce an empty/initial world!", name);
+        }
         // World reconstruction is many small independent file copies — parallelizing
         // them cuts restore wall-time severalfold on SSDs. Worker count is modest so
         // HDD users aren't hurt by seek thrash.
@@ -340,16 +349,21 @@ public class BackupManager {
         });
         try {
             List<java.util.concurrent.Future<?>> futures = new ArrayList<>(total);
+            int missingBlobs = 0;
             for (Map.Entry<String, String> entry : hashMap.entrySet()) {
                 String fileHash = entry.getKey();
                 String fileName = entry.getValue();
+                File hashFile;
+                if (fileHash.startsWith("blog_temp")) {
+                    hashFile = tempBlobsDir.resolve(fileHash).toFile();
+                } else {
+                    hashFile = blobsDir.resolve(fileHash.substring(0, 2)).resolve(fileHash).toFile();
+                }
+                if (!hashFile.exists()) {
+                    missingBlobs++;
+                    logger.warn("[QBM-DBG] reconstructBackup MISSING blob for fileName='{}' hash='{}' expectedAt='{}'", fileName, fileHash, hashFile);
+                }
                 futures.add(pool.submit(() -> {
-                    File hashFile;
-                    if (fileHash.startsWith("blog_temp")) {
-                        hashFile = tempBlobsDir.resolve(fileHash).toFile();
-                    } else {
-                        hashFile = blobsDir.resolve(fileHash.substring(0, 2)).resolve(fileHash).toFile();
-                    }
                     FileUtils.copyFile(hashFile, targetRoot.resolve(fileName).toFile());
                     if (extraRunnable != null) {
                         extraRunnable.execute(total, done.incrementAndGet());
@@ -360,6 +374,7 @@ public class BackupManager {
             for (java.util.concurrent.Future<?> future : futures) {
                 future.get();
             }
+            logger.info("[QBM-DBG] reconstructBackup name='{}' DONE: copied={} missingBlobs={}", name, done.get(), missingBlobs);
             return true;
         } catch (Exception e) {
             logger.error("Reconstruct backup failed", e);
@@ -449,8 +464,10 @@ public class BackupManager {
      */
     public static void cleanSaveDirectory() throws IOException {
         Path savePath = QuickbackupmultiReforged.getModContainer().getCurrentSavePath();
+        logger.info("[QBM-DBG] cleanSaveDirectory savePath='{}' exists={}", savePath, Files.exists(savePath));
         List<String> ignoredFiles = QuickbackupmultiReforged.getModConfig().getIgnoredFiles();
         List<String> ignoredFolders = QuickbackupmultiReforged.getModConfig().getIgnoredFolders();
+        int[] deleted = {0};
         Files.walkFileTree(savePath, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -464,6 +481,7 @@ public class BackupManager {
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (!ignoredFiles.contains(file.getFileName().toString())) {
                     Files.delete(file);
+                    deleted[0]++;
                 }
                 return FileVisitResult.CONTINUE;
             }
@@ -481,6 +499,8 @@ public class BackupManager {
                 return FileVisitResult.CONTINUE;
             }
         });
+        boolean levelDatExists = Files.exists(savePath.resolve("level.dat"));
+        logger.info("[QBM-DBG] cleanSaveDirectory DONE: deletedFiles={} level.dat.still.exists={} savePathAfter='{}'", deleted[0], levelDatExists, savePath);
     }
 
     @FunctionalInterface

@@ -9,9 +9,14 @@ public class OnServerStoppedHandler {
     public static void handle() {
         ScheduleManager.clearAllSchedule();
         if (QuickbackupmultiReforged.getModContainer().isRestoringBackup()) {
+            QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler — isRestoringBackup=true envType={} selection='{}'",
+                QuickbackupmultiReforged.getModContainer().getEnvType(),
+                QuickbackupmultiReforged.getModContainer().getCurrentSelectionBackup());
             if (QuickbackupmultiReforged.getModContainer().getEnvType() == ModEnvType.SERVER) {
                 try {
                     String selection = QuickbackupmultiReforged.getModContainer().getCurrentSelectionBackup();
+                    boolean storageExists = QuickbackupmultiReforged.getDatabase().storageExists(selection);
+                    QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler selection='{}' storageExistsByDb={}", selection, storageExists);
                     // Restoring "restore_temp" itself IS the rescue action: taking a
                     // temp backup first would overwrite the very storage being restored.
                     boolean restoringTemp = "restore_temp".equals(selection);
@@ -27,6 +32,7 @@ public class OnServerStoppedHandler {
                         }
                     }
                     if (tempReady) {
+                        QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler calling cleanSaveDirectory");
                         // Remove files the backup does not contain, otherwise the restore
                         // is an overlay merge leaving newer region/player files behind.
                         try {
@@ -34,7 +40,9 @@ public class OnServerStoppedHandler {
                         } catch (Exception e) {
                             QuickbackupmultiReforged.logger.warn("Cleaning save directory failed; restore continues as overlay", e);
                         }
+                        QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler calling restoreBackup('{}')", selection);
                         boolean restoreResult = BackupManager.restoreBackup(selection);
+                        QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler restoreBackup('{}') result={}", selection, restoreResult);
                         if (!restoreResult) {
                             QuickbackupmultiReforged.logger.warn("Restore failed, try to restore from temp backup");
                             try {
@@ -55,6 +63,8 @@ public class OnServerStoppedHandler {
                         }
                     }
                 } finally {
+                    QuickbackupmultiReforged.logger.info("[QBM-DBG] OnServerStoppedHandler restore branch done — releasing mutex, afterRestarting=true; autoRestartMode={}",
+                        QuickbackupmultiReforged.getModConfig().getAutoRestartMode());
                     QuickbackupmultiReforged.getModContainer().setRestoringBackup(false);
                     QuickbackupmultiReforged.getModContainer().setAfterRestarting(true);
                     BackupManager.OPERATION_MUTEX.release();

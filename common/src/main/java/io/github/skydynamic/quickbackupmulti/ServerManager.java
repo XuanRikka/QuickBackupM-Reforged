@@ -24,11 +24,20 @@ public class ServerManager {
 
     public void startServer() {
         try {
+            QuickbackupmultiReforged.logger.info("[QBM-DBG] ServerManager.startServer BEGIN — reused MinecraftServer={}, running-before={}", this.server, this.server.running);
             this.server.running = true;
             this.server.stopped = false;
             this.server.connection = new ServerConnectionListener(this.server);
+            // CRITICAL: the base dir passed to createDefault() MUST be the original
+            // run-directory (the one Main.main used), NOT the current level directory.
+            // validateAndCreateAccess(levelId) resolves to baseDir.resolve(levelId),
+            // so feeding it the already-resolved level path "./world" and id "world"
+            // produces "./world/world" — a nested directory the restore never wrote to
+            // (it wrote to "./world"), so the restarted server loads an empty/initial
+            // world instead of the restored one. Use the parent LevelStorageSource's
+            // baseDir, which is invariant across restarts.
             LevelStorageSource levelStorageSource = LevelStorageSource.createDefault(
-                this.server.storageSource.getLevelDirectory().path()
+                this.server.storageSource.parent().getBaseDir()
             );
             this.server.storageSource = levelStorageSource.validateAndCreateAccess(
                 this.server.storageSource.getLevelId()
@@ -44,6 +53,14 @@ public class ServerManager {
                 this.server.getFixerUpper(),
                 this.server.registryAccess()
             );
+            java.nio.file.Path levelDirPath = this.server.storageSource.getLevelDirectory().path();
+            boolean levelDatExists = java.nio.file.Files.exists(levelDirPath.resolve("level.dat"));
+            int[] fileCount = {0};
+            try (var s = java.nio.file.Files.walk(levelDirPath)) {
+                fileCount[0] = (int) s.count();
+            } catch (Exception ignored) {}
+            QuickbackupmultiReforged.logger.info("[QBM-DBG] ServerManager.startServer levelDir='{}' levelId='{}' level.dat.exists={} filesInLevelDir={}",
+                levelDirPath, this.server.storageSource.getLevelId(), levelDatExists, fileCount[0]);
             resetLoaderStartupGuards();
             reopenPacketProcessor();
             this.server.runServer();

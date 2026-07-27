@@ -71,6 +71,7 @@ public final class QuickbackupmultiReforged {
     }
 
     public static void setNewDataBase(String collectionName) {
+        logger.info("[QBM-DBG] setNewDataBase collectionName='{}' envType={} storagePath='{}'", collectionName, (modContainer == null ? "?" : modContainer.getEnvType()), (modConfig == null ? "?" : modConfig.getStoragePath()));
         QuickbackupmultiReforged.getModContainer().setOriginalStoragePath(QuickbackupmultiReforged.getModConfig().getStoragePath());
 
         String appendFolder = (QuickbackupmultiReforged.getModContainer().getEnvType() == ModEnvType.CLIENT) ? "/" + collectionName : "";
